@@ -1,0 +1,221 @@
+openapi: '3.0.1'
+info:
+  description: 'RESTful API for MovieShare'
+  title: 'MovieShare API'
+  version: '1.0.0'
+paths:
+  /hello:
+    get:
+      summary: 'hello'
+      operationId: 'getHello'
+      responses:
+        200:
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelloSchema'
+        404:
+          description: 'content not found'
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: '2.0'
+        type: 'aws_proxy'
+        httpMethod: 'POST'
+        uri: 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${stageVariables.HelloFunction}/invocations'
+  /bye:
+    get:
+      summary: 'hello'
+      operationId: 'getBye'
+      responses:
+        200:
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ByeSchema'
+        404:
+          description: 'content not found'
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: '2.0'
+        type: 'aws_proxy'
+        httpMethod: 'POST'
+        uri: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${stageVariables.ByeFunction}/invocations
+
+components:
+  schemas:
+    HelloSchema:
+      type: 'object'
+      properties:
+        message:
+          type: 'string'
+          description: 'Responase message'
+          example: 'Hello world'
+    ByeSchema:
+      type: 'object'
+      properties:
+        message:
+          type: 'string'
+          description: 'Responase message'
+          example: 'Bye world'
+
+  # /movies:
+  #   get:
+  #     parameters:
+  #       - name: "title"
+  #         in: "query"
+  #         required: false
+  #         type: "string"
+  #       - name: "genre"
+  #         in: "query"
+  #         required: false
+  #         type: "string"
+  #       - name: "userId"
+  #         in: "query"
+  #         required: false
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Get movies"
+  #         schema:
+  #           type: "array"
+  #           items:
+  #             $ref: "#/definitions/movieResponse"
+  #     security:
+  #       - api_key: []
+  #   post:
+  #     parameters:
+  #     - name: "body"
+  #       in: "body"
+  #       required: true
+  #       schema:
+  #         $ref: "#/definitions/moviePostRequestBody"
+  #     responses:
+  #       200:
+  #         description: "Create a movie"
+  #         schema:
+  #           $ref: "#/definitions/movieResponse"
+  #     security:
+  #       - api_key: []
+  # /movies/random:
+  #   get:
+  #     parameters:
+  #       - name: "genre"
+  #         in: "query"
+  #         required: false
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Get a movie at random"
+  #         schema:
+  #           $ref: "#/definitions/movieResponse"
+  #     security:
+  #       - api_key: []
+  # /movies/{id}:
+  #   get:
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "number"
+  #     responses:
+  #       200:
+  #         description: "Get a movie by id"
+  #         schema:
+  #           $ref: "#/definitions/movieResponse"
+  #     security:
+  #       - api_key: []
+  #   put:
+  #     parameters:
+  #     - name: "id"
+  #       in: "path"
+  #       required: true
+  #       type: "number"
+  #     - name: "body"
+  #       in: "body"
+  #       required: true
+  #       schema:
+  #         $ref: "#/definitions/moviePutRequestBody"
+  #     responses:
+  #       200:
+  #         description: "Update a movie by id"
+  #         schema:
+  #           $ref: "#/definitions/movieResponse"
+# definitions:
+#   loginPostRequestBody:
+#     type: "object"
+#     properties:
+#       tokenId:
+#         type: "string"
+#   authResponse:
+#     type: "object"
+#     properties:
+#       status:
+#         type: "boolean"
+#       user:
+#         type: "object"
+#   movieResponse:
+#     type: "object"
+#     properties:
+#       id:
+#         type: "integer"
+#         format: "int64"
+#         example: 1
+#       createdAt:
+#         type: "string"
+#         format: "date-time"
+#         example: "2000-01-01T00:00:00Z"
+#       userId:
+#         type: "string"
+#         example: "userId"
+#       userName:
+#         type: "string"
+#         example: "userName"
+#       title:
+#         type: "string"
+#         example: "title"
+#       overview:
+#         type: "string"
+#         example: "overview"
+#       genre:
+#         type: "string"
+#         example: "genre"
+#       youtubeTitleId:
+#         type: "string"
+#         example: "youtubeTitleId"
+#       grinningScore:
+#         type: "integer"
+#         format: "int64"
+#         example: 5
+#   moviePostRequestBody:
+#     type: "object"
+#     properties:
+#       userId:
+#         type: "string"
+#         example: "userId"
+#       userName:
+#         type: "string"
+#         example: "userName"
+#       title:
+#         type: "string"
+#         example: "title"
+#       overview:
+#         type: "string"
+#         example: "overview"
+#       genre:
+#         type: "string"
+#         example: "genre"
+#       youtubeTitleId:
+#         type: "string"
+#         example: "youtubeTitleId"
+#   moviePutRequestBody:
+#     type: "object"
+#     properties:
+#       grinningScore:
+#         type: "integer"
+#         format: "int64"
+#         example: 5
+# securityDefinitions:
+#   api_key:
+#     type: "apiKey"
+#     name: "x-api-key"
+#     in: "header"

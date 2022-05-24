@@ -27,6 +27,19 @@ Resources:
               audience:
                 - 'https://mshare-auth.com'
             IdentitySource: '$request.header.Authorization'
+      CorsConfiguration:
+        AllowHeaders:
+          - 'Authorization'
+          - 'Content-Type'
+        AllowMethods:
+          - 'GET'
+          - 'POST'
+          - 'PUT'
+        AllowOrigins:
+          - 'http://localhost:3000'
+          - 'https://mshare-web-app-vercel.app'
+        MaxAge: 600
+
   MoviesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -39,16 +52,8 @@ Resources:
           AttributeType: S
         - AttributeName: title
           AttributeType: S
-        # - AttributeName: overview
-        #   AttributeType: S
         - AttributeName: genre
           AttributeType: S
-        # - AttributeName: grinningScore
-        #   AttributeType: S
-        # - AttributeName: createdAt
-        #   AttributeType: S
-        # - AttributeName: username
-        #   AttributeType: S
       KeySchema:
         - AttributeName: userId
           KeyType: HASH

@@ -43,7 +43,7 @@ Resources:
   MoviesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: Movies
+      TableName: movies
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: userId
@@ -55,28 +55,73 @@ Resources:
         - AttributeName: genre
           AttributeType: S
       KeySchema:
-        - AttributeName: userId
-          KeyType: HASH
         - AttributeName: movieId
-          KeyType: RANGE
+          KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: GenreIndex
+        - IndexName: genreIndex
           KeySchema:
             - AttributeName: genre
               KeyType: HASH
           Projection:
-            ProjectionType: INCLUDE
-            NonKeyAttributes:
-              - title
-              - username
-        - IndexName: TitleIndex
+            ProjectionType: ALL
+        - IndexName: userIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: titleIndex
           KeySchema:
             - AttributeName: title
               KeyType: HASH
           Projection:
-            ProjectionType: INCLUDE
-            NonKeyAttributes:
-              - username
+            ProjectionType: ALL
+
+  GetMoviesFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Events:
+        HttpApiEvent:
+          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /movies
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MoviesTable
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - getMovies/handler.ts
+
+  GetMovieByIdFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Events:
+        HttpApiEvent:
+          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /movies/{movieId}
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MoviesTable
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - getMovieById/handler.ts
 
   HelloWorldFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction

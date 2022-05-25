@@ -2,23 +2,22 @@ import { AttributeValue, DynamoDBClient, GetItemCommand, GetItemCommandInput } f
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Handler } from 'aws-lambda';
 
 type LambdaHandler = Handler<APIGatewayProxyEventV2, APIGatewayProxyResultV2>;
+const docClient = new DynamoDBClient({});
+const tableName = 'movies';
 export const lambdaHandler: LambdaHandler = async (event: APIGatewayProxyEventV2) => {
-    const tableName = 'movies';
-    const pathParamMovieId = event.pathParameters?.movieId;
-    if (!pathParamMovieId)
-        return {
-            statusCode: 400,
-            body: JSON.stringify({
-                message: 'ERROR: provide query parameter',
-            }),
-        };
     try {
-        const docClient = new DynamoDBClient({});
+        if (!event.pathParameters?.movieId)
+            return {
+                statusCode: 400,
+                body: JSON.stringify({
+                    message: 'ERROR: provide query parameter',
+                }),
+            };
         const getCommandParam: GetItemCommandInput = {
             TableName: tableName,
             Key: {
                 movieId: {
-                    S: pathParamMovieId,
+                    S: event.pathParameters?.movieId,
                 },
             },
         };

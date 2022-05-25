@@ -62,6 +62,8 @@ Resources:
           KeySchema:
             - AttributeName: genre
               KeyType: HASH
+            - AttributeName: movieId
+              KeyType: RANGE
           Projection:
             ProjectionType: ALL
         - IndexName: userIdIndex
@@ -123,7 +125,7 @@ Resources:
         EntryPoints:
           - getMovieById/handler.ts
 
-  HelloWorldFunction:
+  GetRandomMovieFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       CodeUri: src/
@@ -133,7 +135,10 @@ Resources:
           Properties:
             ApiId: !Ref HttpApi
             Method: GET
-            Path: /hello
+            Path: /movies/random
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MoviesTable
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
       BuildProperties:
@@ -141,7 +146,26 @@ Resources:
         Target: 'es2020'
         Sourcemap: true
         EntryPoints:
-          - hello/handler.ts
+          - getRandomMovie/handler.ts
+  # HelloWorldFunction:
+  #   Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+  #   Properties:
+  #     CodeUri: src/
+  #     Events:
+  #       HttpApiEvent:
+  #         Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+  #         Properties:
+  #           ApiId: !Ref HttpApi
+  #           Method: GET
+  #           Path: /hello
+  #   Metadata: # Manage esbuild properties
+  #     BuildMethod: esbuild
+  #     BuildProperties:
+  #       Minify: true
+  #       Target: 'es2020'
+  #       Sourcemap: true
+  #       EntryPoints:
+  #         - hello/handler.ts
   ByeWorldFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -165,18 +189,18 @@ Resources:
           - bye/handler.ts
 
 Outputs:
-  HelloWorldApi:
-    Description: 'API Gateway endpoint URL for Prod stage for Hello World function'
-    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/hello'
+  # HelloWorldApi:
+  #   Description: 'API Gateway endpoint URL for Prod stage for Hello World function'
+  #   Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/hello'
   ByeWorldApi:
     Description: 'API Gateway endpoint URL for Prod stage for bye World function'
     Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/bye'
-  HelloWorldFunction:
-    Description: 'Hello World Lambda Function ARN'
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: 'Implicit IAM Role created for Hello World function'
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  # HelloWorldFunction:
+  #   Description: 'Hello World Lambda Function ARN'
+  #   Value: !GetAtt HelloWorldFunction.Arn
+  # HelloWorldFunctionIamRole:
+  #   Description: 'Implicit IAM Role created for Hello World function'
+  #   Value: !GetAtt HelloWorldFunctionRole.Arn
   MoviesTable:
     Description: 'Movies table'
     Value: !GetAtt MoviesTable.Arn

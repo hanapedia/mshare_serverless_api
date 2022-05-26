@@ -40,6 +40,65 @@ Resources:
           - 'https://mshare-web-app-vercel.app'
         MaxAge: 600
 
+  PutMovieScoreApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: PUT /movies
+      Target: !Sub 'integrations/${PutMovieScoreApiIntegration}'
+
+  PutMovieScoreApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      CredentialsArn: !GetAtt HttpApiRole.Arn
+      PayloadFormatVersion: '1.0'
+      IntegrationType: AWS_PROXY
+      IntegrationSubtype: SQS-SendMessage
+      RequestParameters:
+        QueueUrl: !Ref PutMovieScoreQueue
+        MessageBody: $request.body
+
+  HttpApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'SqsSendPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sqs:SendMessage'
+                  - 'sqs:GetQueueUrl'
+                  - 'sqs:SendMessageBatch'
+                Resource: !GetAtt PutMovieScoreQueue.Arn
+
+  PutMovieScoreQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: 300
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PutMovieScoreDLQ.Arn
+        maxReceiveCount: 1
+  PutMovieScoreDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: 300
+
   MoviesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -124,6 +183,29 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - postMovie/handler.ts
+
+  PutMovieScoreFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Events:
+        HttpApiEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PutMovieScoreQueue.Arn
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref MoviesTable
+        - SQSPollerPolicy:
+            QueueName: !GetAtt PutMovieScoreQueue.QueueName
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - putMovieScore/handler.ts
 
   GetMovieByIdFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction

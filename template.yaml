@@ -44,7 +44,7 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref HttpApi
-      RouteKey: PUT /movies
+      RouteKey: PUT /movies/{movieId}
       Target: !Sub 'integrations/${PutMovieScoreApiIntegration}'
 
   PutMovieScoreApiIntegration:
@@ -58,6 +58,7 @@ Resources:
       RequestParameters:
         QueueUrl: !Ref PutMovieScoreQueue
         MessageBody: $request.body
+        MessageGroupId: $request.path.movieId
 
   HttpApiRole:
     Type: AWS::IAM::Role

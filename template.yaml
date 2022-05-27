@@ -3,7 +3,16 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   mshare_serverless_api
 
-  Sample SAM Template for mshare_serverless_api
+Outputs:
+  HttpApi:
+    Description: 'API Gateway endpoint URL'
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  MoviesTable:
+    Description: 'Movies table'
+    Value: !GetAtt MoviesTable.Arn
+  PutMovieScoreQueue:
+    Description: 'Put movie score Queue arn'
+    Value: !GetAtt PutMovieScoreQueue.Arn
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -16,17 +25,10 @@ Globals:
 
 Resources:
   HttpApi:
-    Type: AWS::Serverless::HttpApi
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      Description: 'Http Api gateway'
-      Auth:
-        Authorizers:
-          OAuth2Authorizer:
-            JwtConfiguration:
-              issuer: 'https://hanapedia.jp.auth0.com'
-              audience:
-                - 'https://mshare-auth.com'
-            IdentitySource: '$request.header.Authorization'
+      Name: mshare
+      ProtocolType: HTTP
       CorsConfiguration:
         AllowHeaders:
           - 'Authorization'
@@ -39,27 +41,27 @@ Resources:
           - 'http://localhost:3000'
           - 'https://mshare-web-app-vercel.app'
         MaxAge: 600
-
-  PutMovieScoreApiRoute:
-    Type: AWS::ApiGatewayV2::Route
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
     Properties:
       ApiId: !Ref HttpApi
-      RouteKey: PUT /movies/{movieId}
-      Target: !Sub 'integrations/${PutMovieScoreApiIntegration}'
-
-  PutMovieScoreApiIntegration:
-    Type: AWS::ApiGatewayV2::Integration
+      StageName: $default
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt HttpApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "routeKey": "$context.routeKey", "status": "$context.status", "protocol": "$context.protocol", "responseLength": "context.responseLength"}'
+  HttpApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
     Properties:
       ApiId: !Ref HttpApi
-      CredentialsArn: !GetAtt HttpApiRole.Arn
-      PayloadFormatVersion: '1.0'
-      IntegrationType: AWS_PROXY
-      IntegrationSubtype: SQS-SendMessage
-      RequestParameters:
-        QueueUrl: !Ref PutMovieScoreQueue
-        MessageBody: $request.body
-        MessageGroupId: $request.path.movieId
-
+      AuthorizerType: JWT
+      Name: OAuth2Authorizer
+      IdentitySource:
+        - '$request.header.Authorization'
+      JwtConfiguration:
+        Issuer: 'https://hanapedia.jp.auth0.com'
+        Audience:
+          - 'https://mshare-auth.com'
   HttpApiRole:
     Type: AWS::IAM::Role
     Properties:
@@ -83,7 +85,124 @@ Resources:
                   - 'sqs:GetQueueUrl'
                   - 'sqs:SendMessageBatch'
                 Resource: !GetAtt PutMovieScoreQueue.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutLogEvents'
+                  - 'logs:GetLogEvents'
+                  - 'logs:FilterLogEvents'
+                Resource: !GetAtt HttpApiAccessLogGroup.Arn
+  HttpApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: 'Http-api-log-group'
+      RetentionInDays: 1
 
+  GetMoviesApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /movies
+      Target: !Sub 'integrations/${GetMoviesApiIntegration}'
+  GetMoviesApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetMoviesFunction.Arn
+      PayloadFormatVersion: '2.0'
+  GetMoviesFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MoviesTable
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - getMovies/handler.ts
+  GetMoviesFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref GetMoviesFunction
+      Principal: 'apigateway.amazonaws.com'
+  GetMoviesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetMoviesFunction}
+      RetentionInDays: 1
+
+  PostMovieApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /movies
+      Target: !Sub 'integrations/${PostMovieApiIntegration}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref HttpApiAuthorizer
+  PostMovieApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PostMovieFunction.Arn
+      PayloadFormatVersion: '2.0'
+  PostMovieFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref MoviesTable
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - postMovie/handler.ts
+  PostMovieFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref PostMovieFunction
+      Principal: 'apigateway.amazonaws.com'
+  PostMovieFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PostMovieFunction}
+      RetentionInDays: 1
+
+  PutMovieScoreApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: PUT /movies/{movieId}
+      Target: !Sub 'integrations/${PutMovieScoreApiIntegration}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref HttpApiAuthorizer
+  PutMovieScoreApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      CredentialsArn: !GetAtt HttpApiRole.Arn
+      PayloadFormatVersion: '1.0'
+      IntegrationType: AWS_PROXY
+      IntegrationSubtype: SQS-SendMessage
+      RequestParameters:
+        QueueUrl: !Ref PutMovieScoreQueue
+        MessageBody: $request.body
+        MessageGroupId: $request.path.movieId
   PutMovieScoreQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -99,6 +218,113 @@ Resources:
       FifoQueue: true
       ContentBasedDeduplication: true
       MessageRetentionPeriod: 300
+  PutMovieScoreFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Events:
+        HttpApiEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PutMovieScoreQueue.Arn
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref MoviesTable
+        - SQSPollerPolicy:
+            QueueName: !GetAtt PutMovieScoreQueue.QueueName
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - putMovieScore/handler.ts
+  PutMovieScoreFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PutMovieScoreFunction}
+      RetentionInDays: 1
+
+  GetMovieByIdApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /movies/{movieId}
+      Target: !Sub 'integrations/${GetMovieByIdApiIntegration}'
+  GetMovieByIdApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetMovieByIdFunction.Arn
+      PayloadFormatVersion: '2.0'
+  GetMovieByIdFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MoviesTable
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - getMovieById/handler.ts
+  GetMovieByIdFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref GetMovieByIdFunction
+      Principal: 'apigateway.amazonaws.com'
+  GetMovieByIdFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetMovieByIdFunction}
+      RetentionInDays: 1
+
+  GetRandomMovieApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /movies/random
+      Target: !Sub 'integrations/${GetRandomMovieApiIntegration}'
+  GetRandomMovieApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetRandomMovieFunction.Arn
+      PayloadFormatVersion: '2.0'
+  GetRandomMovieFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MoviesTable
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'es2020'
+        Sourcemap: true
+        EntryPoints:
+          - getRandomMovie/handler.ts
+  GetRandomMovieFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref GetRandomMovieFunction
+      Principal: 'apigateway.amazonaws.com'
+  GetRandomFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetRandomMovieFunction}
+      RetentionInDays: 1
 
   MoviesTable:
     Type: AWS::DynamoDB::Table
@@ -138,175 +364,3 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-
-  GetMoviesFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            ApiId: !Ref HttpApi
-            Method: GET
-            Path: /movies
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref MoviesTable
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: 'es2020'
-        Sourcemap: true
-        EntryPoints:
-          - getMovies/handler.ts
-
-  PostMoviesFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            ApiId: !Ref HttpApi
-            Method: POST
-            Path: /movies
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref MoviesTable
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: 'es2020'
-        Sourcemap: true
-        EntryPoints:
-          - postMovie/handler.ts
-
-  PutMovieScoreFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt PutMovieScoreQueue.Arn
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref MoviesTable
-        - SQSPollerPolicy:
-            QueueName: !GetAtt PutMovieScoreQueue.QueueName
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: 'es2020'
-        Sourcemap: true
-        EntryPoints:
-          - putMovieScore/handler.ts
-
-  GetMovieByIdFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            ApiId: !Ref HttpApi
-            Method: GET
-            Path: /movies/{movieId}
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref MoviesTable
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: 'es2020'
-        Sourcemap: true
-        EntryPoints:
-          - getMovieById/handler.ts
-
-  GetRandomMovieFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            ApiId: !Ref HttpApi
-            Method: GET
-            Path: /movies/random
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref MoviesTable
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: 'es2020'
-        Sourcemap: true
-        EntryPoints:
-          - getRandomMovie/handler.ts
-  # HelloWorldFunction:
-  #   Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-  #   Properties:
-  #     CodeUri: src/
-  #     Events:
-  #       HttpApiEvent:
-  #         Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-  #         Properties:
-  #           ApiId: !Ref HttpApi
-  #           Method: GET
-  #           Path: /hello
-  #   Metadata: # Manage esbuild properties
-  #     BuildMethod: esbuild
-  #     BuildProperties:
-  #       Minify: true
-  #       Target: 'es2020'
-  #       Sourcemap: true
-  #       EntryPoints:
-  #         - hello/handler.ts
-  ByeWorldFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            ApiId: !Ref HttpApi
-            Method: GET
-            Path: /bye
-            Auth:
-              Authorizer: OAuth2Authorizer
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: 'es2020'
-        Sourcemap: true
-        EntryPoints:
-          - bye/handler.ts
-
-Outputs:
-  # HelloWorldApi:
-  #   Description: 'API Gateway endpoint URL for Prod stage for Hello World function'
-  #   Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/hello'
-  ByeWorldApi:
-    Description: 'API Gateway endpoint URL for Prod stage for bye World function'
-    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/bye'
-  # HelloWorldFunction:
-  #   Description: 'Hello World Lambda Function ARN'
-  #   Value: !GetAtt HelloWorldFunction.Arn
-  # HelloWorldFunctionIamRole:
-  #   Description: 'Implicit IAM Role created for Hello World function'
-  #   Value: !GetAtt HelloWorldFunctionRole.Arn
-  MoviesTable:
-    Description: 'Movies table'
-    Value: !GetAtt MoviesTable.Arn

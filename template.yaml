@@ -23,10 +23,19 @@ Parameters:
     Description: 'Format for access log of http API'
   JwtConfigIssuer:
     Type: String
-    Description: 'Jwt issuer'
+    Description: 'Jwt issuer for api jwt authorizer'
   JwtConfigAudience:
     Type: String
-    Description: 'Jwt audience'
+    Description: 'Jwt audience for api jwt authorizer'
+  CustomDomainName:
+    Type: String
+    Description: 'Custom Domain name for the api'
+  AcmCertificateArn:
+    Type: String
+    Description: 'Arn of Certificate in Amazon certificate manager'
+  CustomDomainHostedZoneId:
+    Type: String
+    Description: 'Id of the hosted zone of the domain name'
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -112,6 +121,30 @@ Resources:
     Properties:
       LogGroupName: 'mshare-api-log-group'
       RetentionInDays: 1
+  HttpApiCustomDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref CustomDomainName
+      DomainNameConfigurations:
+        - EndpointType: REGIONAL
+          CertificateArn: !Ref AcmCertificateArn
+  ApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      DomainName: !Ref CustomDomainName
+      ApiId: !Ref HttpApi
+      Stage: !Ref HttpApiStage
+    DependsOn: HttpApiCustomDomain
+  CustomDomainRecordGroup:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref CustomDomainHostedZoneId
+      RecordSets:
+        - Name: !Ref CustomDomainName
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt HttpApiCustomDomain.RegionalDomainName
+            HostedZoneId: !GetAtt HttpApiCustomDomain.RegionalHostedZoneId
 
   GetMoviesApiRoute:
     Type: AWS::ApiGatewayV2::Route

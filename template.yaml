@@ -14,6 +14,20 @@ Outputs:
     Description: 'Put movie score Queue arn'
     Value: !GetAtt PutMovieScoreQueue.Arn
 
+Parameters:
+  AllowOriginsParameter:
+    Type: CommaDelimitedList
+    Description: 'Allowed origins for CORS config'
+  AccessLogFormatParameter:
+    Type: String
+    Description: 'Format for access log of http API'
+  JwtConfigIssuer:
+    Type: String
+    Description: 'Jwt issuer'
+  JwtConfigAudience:
+    Type: String
+    Description: 'Jwt audience'
+
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
@@ -37,9 +51,7 @@ Resources:
           - 'GET'
           - 'POST'
           - 'PUT'
-        AllowOrigins:
-          - 'http://localhost:3000'
-          - 'https://mshare-web-app-vercel.app'
+        AllowOrigins: !Ref AllowOriginsParameter
         MaxAge: 600
   HttpApiStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -49,7 +61,7 @@ Resources:
       AutoDeploy: true
       AccessLogSettings:
         DestinationArn: !GetAtt HttpApiAccessLogGroup.Arn
-        Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "routeKey": "$context.routeKey", "status": "$context.status", "protocol": "$context.protocol", "responseLength": "context.responseLength"}'
+        Format: !Ref AccessLogFormatParameter
   HttpApiAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
     Properties:
@@ -59,9 +71,9 @@ Resources:
       IdentitySource:
         - '$request.header.Authorization'
       JwtConfiguration:
-        Issuer: 'https://hanapedia.jp.auth0.com'
+        Issuer: !Ref JwtConfigIssuer
         Audience:
-          - 'https://mshare-auth.com'
+          - !Ref JwtConfigAudience
   HttpApiRole:
     Type: AWS::IAM::Role
     Properties:
@@ -98,7 +110,7 @@ Resources:
   HttpApiAccessLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: 'Http-api-log-group'
+      LogGroupName: 'mshare-api-log-group'
       RetentionInDays: 1
 
   GetMoviesApiRoute:
@@ -348,8 +360,6 @@ Resources:
           KeySchema:
             - AttributeName: genre
               KeyType: HASH
-            - AttributeName: movieId
-              KeyType: RANGE
           Projection:
             ProjectionType: ALL
         - IndexName: userIdIndex

@@ -6,7 +6,7 @@ Description: >
 Outputs:
   HttpApi:
     Description: 'API Gateway endpoint URL'
-    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+    Value: !Sub 'https://${CustomDomainName}'
   MoviesTable:
     Description: 'Movies table'
     Value: !GetAtt MoviesTable.Arn
@@ -141,6 +141,10 @@ Resources:
       HostedZoneId: !Ref CustomDomainHostedZoneId
       RecordSets:
         - Name: !Ref CustomDomainName
+          # Type: CNAME
+          # ResourceRecords:
+          #   - !GetAtt HttpApiCustomDomain.RegionalDomainName
+          # TTL: '60'
           Type: A
           AliasTarget:
             DNSName: !GetAtt HttpApiCustomDomain.RegionalDomainName

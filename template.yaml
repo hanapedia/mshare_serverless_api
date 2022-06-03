@@ -6,13 +6,36 @@ Description: >
 Outputs:
   HttpApi:
     Description: 'API Gateway endpoint URL'
-    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+    Value: !Sub 'https://${CustomDomainName}'
   MoviesTable:
     Description: 'Movies table'
     Value: !GetAtt MoviesTable.Arn
   PutMovieScoreQueue:
     Description: 'Put movie score Queue arn'
     Value: !GetAtt PutMovieScoreQueue.Arn
+
+Parameters:
+  AllowOriginsParameter:
+    Type: CommaDelimitedList
+    Description: 'Allowed origins for CORS config'
+  AccessLogFormatParameter:
+    Type: String
+    Description: 'Format for access log of http API'
+  JwtConfigIssuer:
+    Type: String
+    Description: 'Jwt issuer for api jwt authorizer'
+  JwtConfigAudience:
+    Type: String
+    Description: 'Jwt audience for api jwt authorizer'
+  CustomDomainName:
+    Type: String
+    Description: 'Custom Domain name for the api'
+  AcmCertificateArn:
+    Type: String
+    Description: 'Arn of Certificate in Amazon certificate manager'
+  CustomDomainHostedZoneId:
+    Type: String
+    Description: 'Id of the hosted zone of the domain name'
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -37,9 +60,7 @@ Resources:
           - 'GET'
           - 'POST'
           - 'PUT'
-        AllowOrigins:
-          - 'http://localhost:3000'
-          - 'https://mshare-web-app-vercel.app'
+        AllowOrigins: !Ref AllowOriginsParameter
         MaxAge: 600
   HttpApiStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -49,7 +70,7 @@ Resources:
       AutoDeploy: true
       AccessLogSettings:
         DestinationArn: !GetAtt HttpApiAccessLogGroup.Arn
-        Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "routeKey": "$context.routeKey", "status": "$context.status", "protocol": "$context.protocol", "responseLength": "context.responseLength"}'
+        Format: !Ref AccessLogFormatParameter
   HttpApiAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
     Properties:
@@ -59,9 +80,9 @@ Resources:
       IdentitySource:
         - '$request.header.Authorization'
       JwtConfiguration:
-        Issuer: 'https://hanapedia.jp.auth0.com'
+        Issuer: !Ref JwtConfigIssuer
         Audience:
-          - 'https://mshare-auth.com'
+          - !Ref JwtConfigAudience
   HttpApiRole:
     Type: AWS::IAM::Role
     Properties:
@@ -98,8 +119,36 @@ Resources:
   HttpApiAccessLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: 'Http-api-log-group'
+      LogGroupName: 'mshare-api-log-group'
       RetentionInDays: 1
+  HttpApiCustomDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref CustomDomainName
+      DomainNameConfigurations:
+        - EndpointType: REGIONAL
+          CertificateArn: !Ref AcmCertificateArn
+  ApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      DomainName: !Ref CustomDomainName
+      ApiId: !Ref HttpApi
+      Stage: !Ref HttpApiStage
+    DependsOn: HttpApiCustomDomain
+  CustomDomainRecordGroup:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref CustomDomainHostedZoneId
+      RecordSets:
+        - Name: !Ref CustomDomainName
+          # Type: CNAME
+          # ResourceRecords:
+          #   - !GetAtt HttpApiCustomDomain.RegionalDomainName
+          # TTL: '60'
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt HttpApiCustomDomain.RegionalDomainName
+            HostedZoneId: !GetAtt HttpApiCustomDomain.RegionalHostedZoneId
 
   GetMoviesApiRoute:
     Type: AWS::ApiGatewayV2::Route
@@ -348,8 +397,6 @@ Resources:
           KeySchema:
             - AttributeName: genre
               KeyType: HASH
-            - AttributeName: movieId
-              KeyType: RANGE
           Projection:
             ProjectionType: ALL
         - IndexName: userIdIndex

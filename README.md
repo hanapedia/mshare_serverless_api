@@ -6,8 +6,8 @@ To build and deploy your application for the first time, run the following in yo
 Make sure to prepare `.sam-params` file with proper parameter assignments.
 
 ```fish
-sam build --parameter-overrieds $(cat .sam-params)
-sam deploy --guided --parameter-overrieds $(cat .sam-params)
+sam build --parameter-overrides $(cat .sam-params)
+sam deploy --guided --parameter-overrides $(cat .sam-params)
 ```
 
 The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:

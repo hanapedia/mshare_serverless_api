@@ -43,6 +43,10 @@ Globals:
     Timeout: 3
     Runtime: nodejs16.x
     Handler: handler.lambdaHandler
+    Tracing: Active
+    DeadLetterQueue:
+      TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
+      Type: SQS
     Architectures:
       - x86_64
 
@@ -150,6 +154,12 @@ Resources:
             DNSName: !GetAtt HttpApiCustomDomain.RegionalDomainName
             HostedZoneId: !GetAtt HttpApiCustomDomain.RegionalHostedZoneId
 
+  LambdaDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: LambdaDLQ
+      MessageRetentionPeriod: 300
+
   GetMoviesApiRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
@@ -255,6 +265,7 @@ Resources:
   PutMovieScoreQueue:
     Type: AWS::SQS::Queue
     Properties:
+      QueueName: PutMovieScoreQueue.fifo
       FifoQueue: true
       ContentBasedDeduplication: true
       MessageRetentionPeriod: 300
@@ -264,6 +275,7 @@ Resources:
   PutMovieScoreDLQ:
     Type: AWS::SQS::Queue
     Properties:
+      QueueName: PutMovieScoreDLQ.fifo
       FifoQueue: true
       ContentBasedDeduplication: true
       MessageRetentionPeriod: 300

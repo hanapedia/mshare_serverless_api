@@ -8,6 +8,7 @@ s3_prefix = "mshare-api"
 region = "ap-northeast-1"
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
+parameter_overrides = "AllowOriginsParameter=\"http://localhost:3000,https://mshare-web-app-vercel.app\" AccessLogFormatParameter=\"{'requestId':'$context.requestId', 'ip': '$context.identity.sourceIp', 'requestTime': '$context.requestTime', 'httpMethod': '$context.httpMethod', 'routeKey': '$context.routeKey', 'status': '$context.status', 'protocol': '$context.protocol', 'responseLength': '$context.responseLength'}\" JwtConfigIssuer=\"https://hanapedia.jp.auth0.com/\" JwtConfigAudience=\"https://mshare-auth.com\" CustomDomainName=\"mshare.api.hanapedia.link\" AcmCertificateArn=\"arn:aws:acm:ap-northeast-1:672210567299:certificate/c0bd29dc-9f7c-4e87-9ccc-e12f5cb2053c\" CustomDomainHostedZoneId=\"Z02344762MTT0Z1QD4RSO\""
 [default.build.parameters]
 beta_features = true
 [default.sync.parameters]

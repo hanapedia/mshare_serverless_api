@@ -10,9 +10,9 @@ Outputs:
   MoviesTable:
     Description: 'Movies table'
     Value: !GetAtt MoviesTable.Arn
-  PutMovieScoreQueue:
-    Description: 'Put movie score Queue arn'
-    Value: !GetAtt PutMovieScoreQueue.Arn
+  # PutMovieScoreQueue:
+  #   Description: 'Put movie score Queue arn'
+  #   Value: !GetAtt PutMovieScoreQueue.Arn
 
 Parameters:
   AllowOriginsParameter:
@@ -43,6 +43,10 @@ Globals:
     Timeout: 3
     Runtime: nodejs16.x
     Handler: handler.lambdaHandler
+    Tracing: Active
+    DeadLetterQueue:
+      TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
+      Type: SQS
     Architectures:
       - x86_64
 
@@ -100,12 +104,12 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - 'sqs:SendMessage'
-                  - 'sqs:GetQueueUrl'
-                  - 'sqs:SendMessageBatch'
-                Resource: !GetAtt PutMovieScoreQueue.Arn
+              # - Effect: Allow
+              #   Action:
+              #     - 'sqs:SendMessage'
+              #     - 'sqs:GetQueueUrl'
+              #     - 'sqs:SendMessageBatch'
+              #   Resource: !GetAtt PutMovieScoreQueue.Arn
               - Effect: Allow
                 Action:
                   - 'logs:CreateLogGroup'
@@ -149,6 +153,12 @@ Resources:
           AliasTarget:
             DNSName: !GetAtt HttpApiCustomDomain.RegionalDomainName
             HostedZoneId: !GetAtt HttpApiCustomDomain.RegionalHostedZoneId
+
+  LambdaDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: LambdaDLQ
+      MessageRetentionPeriod: 300
 
   GetMoviesApiRoute:
     Type: AWS::ApiGatewayV2::Route
@@ -232,55 +242,96 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${PostMovieFunction}
       RetentionInDays: 1
 
-  PutMovieScoreApiRoute:
+  # [PUT MOVIES ROUTE IMPLEMENTED USING SQS QUEUE START]
+  # PutMovieScoreApiRoute:
+  #   Type: AWS::ApiGatewayV2::Route
+  #   Properties:
+  #     ApiId: !Ref HttpApi
+  #     RouteKey: PUT /movies/{movieId}
+  #     Target: !Sub 'integrations/${PutMovieScoreApiIntegration}'
+  #     AuthorizationType: JWT
+  #     AuthorizerId: !Ref HttpApiAuthorizer
+  # PutMovieScoreApiIntegration:
+  #   Type: AWS::ApiGatewayV2::Integration
+  #   Properties:
+  #     ApiId: !Ref HttpApi
+  #     CredentialsArn: !GetAtt HttpApiRole.Arn
+  #     PayloadFormatVersion: '1.0'
+  #     IntegrationType: AWS_PROXY
+  #     IntegrationSubtype: SQS-SendMessage
+  #     RequestParameters:
+  #       QueueUrl: !Ref PutMovieScoreQueue
+  #       MessageBody: $request.body
+  #       MessageGroupId: $request.path.movieId
+  # PutMovieScoreQueue:
+  #   Type: AWS::SQS::Queue
+  #   Properties:
+  #     QueueName: PutMovieScoreQueue.fifo
+  #     FifoQueue: true
+  #     ContentBasedDeduplication: true
+  #     MessageRetentionPeriod: 300
+  #     RedrivePolicy:
+  #       deadLetterTargetArn: !GetAtt PutMovieScoreDLQ.Arn
+  #       maxReceiveCount: 1
+  # PutMovieScoreDLQ:
+  #   Type: AWS::SQS::Queue
+  #   Properties:
+  #     QueueName: PutMovieScoreDLQ.fifo
+  #     FifoQueue: true
+  #     ContentBasedDeduplication: true
+  #     MessageRetentionPeriod: 300
+  # PutMovieScoreFunction:
+  #   Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+  #   Properties:
+  #     CodeUri: src/
+  #     Events:
+  #       HttpApiEvent:
+  #         Type: SQS
+  #         Properties:
+  #           Queue: !GetAtt PutMovieScoreQueue.Arn
+  #     Policies:
+  #       - DynamoDBWritePolicy:
+  #           TableName: !Ref MoviesTable
+  #       - SQSPollerPolicy:
+  #           QueueName: !GetAtt PutMovieScoreQueue.QueueName
+  #   Metadata: # Manage esbuild properties
+  #     BuildMethod: esbuild
+  #     BuildProperties:
+  #       Minify: true
+  #       Target: 'es2020'
+  #       Sourcemap: true
+  #       EntryPoints:
+  #         - putMovieScoreQueue/handler.ts
+  # PutMovieScoreFunctionLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub /aws/lambda/${PutMovieScoreFunction}
+  #     RetentionInDays: 1
+  # [PUT MOVIES ROUTE IMPLEMENTED USING SQS QUEUE END]
+
+  # [PUT MOVIES ROUTE IMPLEMENTED USING HTTP EVENT START]
+  PutMovieScoreApiRouteHttp:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: PUT /movies/{movieId}
-      Target: !Sub 'integrations/${PutMovieScoreApiIntegration}'
+      Target: !Sub 'integrations/${PutMovieScoreApiIntegrationHttp}'
       AuthorizationType: JWT
       AuthorizerId: !Ref HttpApiAuthorizer
-  PutMovieScoreApiIntegration:
+  PutMovieScoreApiIntegrationHttp:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
       ApiId: !Ref HttpApi
-      CredentialsArn: !GetAtt HttpApiRole.Arn
-      PayloadFormatVersion: '1.0'
       IntegrationType: AWS_PROXY
-      IntegrationSubtype: SQS-SendMessage
-      RequestParameters:
-        QueueUrl: !Ref PutMovieScoreQueue
-        MessageBody: $request.body
-        MessageGroupId: $request.path.movieId
-  PutMovieScoreQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      FifoQueue: true
-      ContentBasedDeduplication: true
-      MessageRetentionPeriod: 300
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt PutMovieScoreDLQ.Arn
-        maxReceiveCount: 1
-  PutMovieScoreDLQ:
-    Type: AWS::SQS::Queue
-    Properties:
-      FifoQueue: true
-      ContentBasedDeduplication: true
-      MessageRetentionPeriod: 300
-  PutMovieScoreFunction:
+      IntegrationUri: !GetAtt PutMovieScoreFunctionHttp.Arn
+      PayloadFormatVersion: '2.0'
+  PutMovieScoreFunctionHttp:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       CodeUri: src/
-      Events:
-        HttpApiEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt PutMovieScoreQueue.Arn
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref MoviesTable
-        - SQSPollerPolicy:
-            QueueName: !GetAtt PutMovieScoreQueue.QueueName
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
       BuildProperties:
@@ -288,12 +339,13 @@ Resources:
         Target: 'es2020'
         Sourcemap: true
         EntryPoints:
-          - putMovieScore/handler.ts
-  PutMovieScoreFunctionLogGroup:
+          - putMovieScoreHttp/handler.ts
+  PutMovieScoreFunctionHttpLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${PutMovieScoreFunction}
+      LogGroupName: !Sub /aws/lambda/${PutMovieScoreFunctionHttp}
       RetentionInDays: 1
+  # [PUT MOVIES ROUTE IMPLEMENTED USING HTTP EVENT END]
 
   GetMovieByIdApiRoute:
     Type: AWS::ApiGatewayV2::Route
